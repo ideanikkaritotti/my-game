@@ -1,0 +1,291 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Quick Platformer</title>
+  <style>
+    body { margin: 0; background: #111; display: grid; place-items: center; height: 100vh; font-family: Arial, sans-serif; }
+    canvas { background: linear-gradient(#67bfff, #c8f6ff); border: 2px solid #333; image-rendering: pixelated; }
+    .hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 14px; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+    .hint { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div><b>Quick Platformer</b></div>
+    <div>Coins: <span id="coins">0</span> / <span id="total">0</span></div>
+    <div class="hint">Move: ← → or A D | Jump: ↑ or W or Space | Restart: R</div>
+  </div>
+
+  <canvas id="c" width="960" height="540"></canvas>
+
+<script>
+/* ====== QUICK PLATFORMER (no external files) ====== */
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const hudCoins = document.getElementById("coins");
+const hudTotal = document.getElementById("total");
+
+const keys = new Set();
+addEventListener("keydown", (e) => {
+  keys.add(e.key.toLowerCase());
+  if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key)) e.preventDefault();
+});
+addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+const W = canvas.width, H = canvas.height;
+
+// World units (simple)
+const GRAVITY = 0.7;
+const FRICTION = 0.85;
+const MOVE_ACC = 0.9;
+const MAX_SPEED = 7.0;
+const JUMP_V = 13.5;
+
+function rectsOverlap(a, b){
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// Basic camera that follows player
+const cam = { x: 0, y: 0 };
+
+function resetLevel(){
+  player.x = 80; player.y = 100;
+  player.vx = 0; player.vy = 0;
+  player.onGround = false;
+  player.coins = 0;
+  for (const coin of coins) coin.taken = false;
+  win = false;
+  messageTimer = 0;
+  updateHud();
+}
+
+function updateHud(){
+  hudCoins.textContent = player.coins;
+  hudTotal.textContent = coins.length;
+}
+
+const player = {
+  x: 80, y: 100,
+  w: 34, h: 44,
+  vx: 0, vy: 0,
+  onGround: false,
+  coins: 0
+};
+
+// Platforms (edit these to design your level)
+const platforms = [
+  // ground
+  { x: -200, y: 480, w: 2200, h: 80 },
+
+  // floating platforms
+  { x: 180, y: 390, w: 160, h: 20 },
+  { x: 420, y: 330, w: 160, h: 20 },
+  { x: 650, y: 280, w: 180, h: 20 },
+  { x: 920, y: 360, w: 220, h: 20 },
+  { x: 1220, y: 300, w: 180, h: 20 },
+  { x: 1460, y: 240, w: 200, h: 20 },
+  { x: 1720, y: 360, w: 220, h: 20 },
+];
+
+// Coins
+const coins = [
+  { x: 230, y: 350, r: 10, taken: false },
+  { x: 470, y: 290, r: 10, taken: false },
+  { x: 720, y: 240, r: 10, taken: false },
+  { x: 1000, y: 320, r: 10, taken: false },
+  { x: 1280, y: 260, r: 10, taken: false },
+  { x: 1520, y: 200, r: 10, taken: false },
+  { x: 1800, y: 320, r: 10, taken: false },
+];
+
+// Goal block (reach this to win)
+const goal = { x: 1950, y: 420, w: 40, h: 60 };
+
+let win = false;
+let messageTimer = 0;
+
+// For a simple circle-rect collision (coins)
+function circleRectHit(cx, cy, r, rect){
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return (dx*dx + dy*dy) <= r*r;
+}
+
+function doInput(){
+  const left  = keys.has("arrowleft") || keys.has("a");
+  const right = keys.has("arrowright") || keys.has("d");
+  const jump  = keys.has("arrowup") || keys.has("w") || keys.has(" ");
+
+  if (left)  player.vx -= MOVE_ACC;
+  if (right) player.vx += MOVE_ACC;
+
+  // clamp speed
+  player.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vx));
+
+  // Jump only if on ground
+  if (jump && player.onGround){
+    player.vy = -JUMP_V;
+    player.onGround = false;
+  }
+
+  if (keys.has("r")) resetLevel();
+}
+
+function applyPhysics(){
+  player.vy += GRAVITY;
+
+  // friction when on ground, otherwise mild air drag
+  player.vx *= player.onGround ? FRICTION : 0.98;
+
+  // Move X and resolve collisions
+  player.x += player.vx;
+  for (const p of platforms){
+    if (rectsOverlap(player, p)){
+      if (player.vx > 0) player.x = p.x - player.w;
+      if (player.vx < 0) player.x = p.x + p.w;
+      player.vx = 0;
+    }
+  }
+
+  // Move Y and resolve collisions
+  player.y += player.vy;
+  player.onGround = false;
+  for (const p of platforms){
+    if (rectsOverlap(player, p)){
+      // falling onto platform
+      if (player.vy > 0){
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      } else if (player.vy < 0){
+        // hitting underside
+        player.y = p.y + p.h;
+        player.vy = 0;
+      }
+    }
+  }
+
+  // Fall off world = restart
+  if (player.y > 900) resetLevel();
+}
+
+function gameLogic(){
+  // coins pickup
+  const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+  for (const c of coins){
+    if (!c.taken && circleRectHit(c.x, c.y, c.r, playerRect)){
+      c.taken = true;
+      player.coins++;
+      messageTimer = 35;
+      updateHud();
+    }
+  }
+
+  // win condition
+  if (!win && rectsOverlap(player, goal)){
+    win = true;
+  }
+
+  // camera follows player (keep some padding)
+  cam.x = Math.max(0, player.x - W * 0.35);
+}
+
+function draw(){
+  ctx.clearRect(0, 0, W, H);
+
+  // Background clouds (cheap parallax)
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "#fff";
+  for (let i=0; i<8; i++){
+    const x = (i*260 - (cam.x*0.3)%260);
+    const y = 60 + (i%3)*40;
+    ctx.beginPath();
+    ctx.ellipse(x+120, y, 70, 20, 0, 0, Math.PI*2);
+    ctx.ellipse(x+170, y+10, 60, 18, 0, 0, Math.PI*2);
+    ctx.ellipse(x+80, y+10, 50, 16, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Translate by camera
+  ctx.save();
+  ctx.translate(-cam.x, -cam.y);
+
+  // Platforms
+  for (const p of platforms){
+    ctx.fillStyle = "#2c7a3f";
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.fillRect(p.x, p.y, p.w, 6);
+  }
+
+  // Goal
+  ctx.fillStyle = win ? "#00ff88" : "#ff3b3b";
+  ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(goal.x+6, goal.y+6, goal.w-12, 10);
+
+  // Coins
+  for (const c of coins){
+    if (c.taken) continue;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+    ctx.fillStyle = "#ffd34d";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Player (simple “character”)
+  ctx.fillStyle = "#1a1a1a";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  // face
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(player.x + 8, player.y + 12, 6, 6);
+  ctx.fillRect(player.x + 20, player.y + 12, 6, 6);
+
+  ctx.restore();
+
+  // UI messages
+  if (win){
+    drawBanner("YOU WIN! Press R to restart");
+  } else if (messageTimer > 0){
+    messageTimer--;
+    drawBanner("+1 coin!");
+  }
+}
+
+function drawBanner(text){
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, H-60, W, 60);
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Arial";
+  ctx.fillText(text, 18, H-22);
+  ctx.restore();
+}
+
+function loop(){
+  doInput();
+  if (!win){
+    applyPhysics();
+    gameLogic();
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+updateHud();
+resetLevel();
+loop();
+</script>
+</body>
+</html>
