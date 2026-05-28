@@ -4,30 +4,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Quick Platformer</title>
+  <title>Tuukka's Thesis Run</title>
   <style>
     body { margin: 0; background: #111; display: grid; place-items: center; height: 100vh; font-family: Arial, sans-serif; }
     canvas { background: linear-gradient(#67bfff, #c8f6ff); border: 2px solid #333; image-rendering: pixelated; }
-    .hud { position: fixed; top: 12px; left: 12px; color: #fff; font-size: 14px; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
-    .hint { opacity: 0.9; }
+    .hud {
+      position: fixed; top: 12px; left: 12px; color: #fff;
+      font-size: 14px; line-height: 1.35;
+      text-shadow: 0 2px 8px rgba(0,0,0,.5);
+      background: rgba(0,0,0,0.25);
+      padding: 10px 12px;
+      border-radius: 10px;
+      backdrop-filter: blur(2px);
+    }
+    .hint { opacity: 0.9; margin-top: 6px; font-size: 12px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,0.12); margin-left:6px; }
   </style>
 </head>
 <body>
   <div class="hud">
-    <div><b>Quick Platformer</b></div>
-    <div>Coins: <span id="coins">0</span> / <span id="total">0</span></div>
+    <div><b>Tuukka’s Thesis Run</b> <span class="badge">Konecranes</span></div>
+    <div>Articles collected: <span id="articles">0</span> / <span id="total">0</span></div>
+    <div>Thesis length: <span id="pages">0</span> pages</div>
+    <div>Companies met: <span id="met">0</span> / <span id="metTotal">0</span></div>
     <div class="hint">Move: ← → or A D | Jump: ↑ or W or Space | Restart: R</div>
   </div>
 
   <canvas id="c" width="960" height="540"></canvas>
 
 <script>
-/* ====== QUICK PLATFORMER (no external files) ====== */
+/* ====== TUUKKA'S THESIS RUN (single-file platformer) ====== */
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-const hudCoins = document.getElementById("coins");
+const hudArticles = document.getElementById("articles");
 const hudTotal = document.getElementById("total");
+const hudPages = document.getElementById("pages");
+const hudMet = document.getElementById("met");
+const hudMetTotal = document.getElementById("metTotal");
 
 const keys = new Set();
 addEventListener("keydown", (e) => {
@@ -38,50 +52,49 @@ addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 
 const W = canvas.width, H = canvas.height;
 
-// World units (simple)
+// Physics tuning
 const GRAVITY = 0.7;
 const FRICTION = 0.85;
 const MOVE_ACC = 0.9;
 const MAX_SPEED = 7.0;
 const JUMP_V = 13.5;
 
+// Camera that follows player
+const cam = { x: 0, y: 0 };
+
 function rectsOverlap(a, b){
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-// Basic camera that follows player
-const cam = { x: 0, y: 0 };
-
-function resetLevel(){
-  player.x = 80; player.y = 100;
-  player.vx = 0; player.vy = 0;
-  player.onGround = false;
-  player.coins = 0;
-  for (const coin of coins) coin.taken = false;
-  win = false;
-  messageTimer = 0;
-  updateHud();
+// Coin-ish pickup (articles) uses circle-rect collision
+function circleRectHit(cx, cy, r, rect){
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return (dx*dx + dy*dy) <= r*r;
 }
 
-function updateHud(){
-  hudCoins.textContent = player.coins;
-  hudTotal.textContent = coins.length;
-}
+// ====== Game state ======
+let win = false;
+let messageTimer = 0;
+let messageText = "";
 
+// Player = Tuukka
 const player = {
+  name: "Tuukka",
+  org: "Konecranes",
   x: 80, y: 100,
   w: 34, h: 44,
   vx: 0, vy: 0,
   onGround: false,
-  coins: 0
+  articles: 0,
+  thesisPages: 10 // starting thesis length (change if you want)
 };
 
-// Platforms (edit these to design your level)
+// Platforms (edit to build level)
 const platforms = [
-  // ground
-  { x: -200, y: 480, w: 2200, h: 80 },
-
-  // floating platforms
+  { x: -200, y: 480, w: 2300, h: 80 },     // ground
   { x: 180, y: 390, w: 160, h: 20 },
   { x: 420, y: 330, w: 160, h: 20 },
   { x: 650, y: 280, w: 180, h: 20 },
@@ -91,8 +104,8 @@ const platforms = [
   { x: 1720, y: 360, w: 220, h: 20 },
 ];
 
-// Coins
-const coins = [
+// Articles (was coins)
+const articles = [
   { x: 230, y: 350, r: 10, taken: false },
   { x: 470, y: 290, r: 10, taken: false },
   { x: 720, y: 240, r: 10, taken: false },
@@ -102,21 +115,50 @@ const coins = [
   { x: 1800, y: 320, r: 10, taken: false },
 ];
 
-// Goal block (reach this to win)
+// “Meet other companies” = NPC blocks you touch
+const companies = [
+  { name: "Company A", x: 520,  y: 304, w: 70, h: 26, met: false },
+  { name: "Company B", x: 980,  y: 334, w: 70, h: 26, met: false },
+  { name: "Company C", x: 1490, y: 214, w: 70, h: 26, met: false },
+];
+
+// Goal block (finish line / professor)
 const goal = { x: 1950, y: 420, w: 40, h: 60 };
 
-let win = false;
-let messageTimer = 0;
+function updateHud(){
+  hudArticles.textContent = player.articles;
+  hudTotal.textContent = articles.length;
 
-// For a simple circle-rect collision (coins)
-function circleRectHit(cx, cy, r, rect){
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-  const dx = cx - closestX;
-  const dy = cy - closestY;
-  return (dx*dx + dy*dy) <= r*r;
+  hudPages.textContent = player.thesisPages;
+
+  const metCount = companies.filter(c => c.met).length;
+  hudMet.textContent = metCount;
+  hudMetTotal.textContent = companies.length;
 }
 
+function showMessage(text, frames=60){
+  messageText = text;
+  messageTimer = frames;
+}
+
+function resetLevel(){
+  player.x = 80; player.y = 100;
+  player.vx = 0; player.vy = 0;
+  player.onGround = false;
+
+  player.articles = 0;
+  player.thesisPages = 10; // reset to base pages
+
+  for (const a of articles) a.taken = false;
+  for (const c of companies) c.met = false;
+
+  win = false;
+  messageTimer = 0;
+  messageText = "";
+  updateHud();
+}
+
+// ====== Input ======
 function doInput(){
   const left  = keys.has("arrowleft") || keys.has("a");
   const right = keys.has("arrowright") || keys.has("d");
@@ -125,10 +167,8 @@ function doInput(){
   if (left)  player.vx -= MOVE_ACC;
   if (right) player.vx += MOVE_ACC;
 
-  // clamp speed
   player.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vx));
 
-  // Jump only if on ground
   if (jump && player.onGround){
     player.vy = -JUMP_V;
     player.onGround = false;
@@ -137,13 +177,13 @@ function doInput(){
   if (keys.has("r")) resetLevel();
 }
 
+// ====== Physics + collisions ======
 function applyPhysics(){
   player.vy += GRAVITY;
 
-  // friction when on ground, otherwise mild air drag
   player.vx *= player.onGround ? FRICTION : 0.98;
 
-  // Move X and resolve collisions
+  // Move X
   player.x += player.vx;
   for (const p of platforms){
     if (rectsOverlap(player, p)){
@@ -153,53 +193,90 @@ function applyPhysics(){
     }
   }
 
-  // Move Y and resolve collisions
+  // Move Y
   player.y += player.vy;
   player.onGround = false;
   for (const p of platforms){
     if (rectsOverlap(player, p)){
-      // falling onto platform
       if (player.vy > 0){
         player.y = p.y - player.h;
         player.vy = 0;
         player.onGround = true;
       } else if (player.vy < 0){
-        // hitting underside
         player.y = p.y + p.h;
         player.vy = 0;
       }
     }
   }
 
-  // Fall off world = restart
-  if (player.y > 900) resetLevel();
+  // Fall off world
+  if (player.y > 900) {
+    showMessage("Tuukka fell! Restarting…", 60);
+    resetLevel();
+  }
 }
 
+// ====== Professor grading ======
+function professorGrade(pages){
+  // Simple 1–5 grading based on thesis pages
+  // Adjust thresholds to your liking
+  if (pages >= 22) return 5;
+  if (pages >= 19) return 4;
+  if (pages >= 16) return 3;
+  if (pages >= 13) return 2;
+  return 1;
+}
+
+// ====== Game logic ======
 function gameLogic(){
-  // coins pickup
   const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
-  for (const c of coins){
-    if (!c.taken && circleRectHit(c.x, c.y, c.r, playerRect)){
-      c.taken = true;
-      player.coins++;
-      messageTimer = 35;
+
+  // Collect articles => +1 thesis page
+  for (const a of articles){
+    if (!a.taken && circleRectHit(a.x, a.y, a.r, playerRect)){
+      a.taken = true;
+      player.articles++;
+      player.thesisPages++; // IMPORTANT: +1 page per article
       updateHud();
+      showMessage("Collected an article → thesis +1 page", 45);
     }
   }
 
-  // win condition
-  if (!win && rectsOverlap(player, goal)){
-    win = true;
+  // Meet companies (touch block)
+  for (const c of companies){
+    if (!c.met && rectsOverlap(playerRect, c)){
+      c.met = true;
+      updateHud();
+      showMessage(`Met ${c.name} 🤝`, 60);
+    }
   }
 
-  // camera follows player (keep some padding)
+  // Finish line
+  if (!win && rectsOverlap(playerRect, goal)){
+    win = true;
+    const grade = professorGrade(player.thesisPages);
+    showMessage(`Professor's grade: ${grade}/5 (Pages: ${player.thesisPages})`, 999999);
+  }
+
+  // Camera follows player
   cam.x = Math.max(0, player.x - W * 0.35);
+}
+
+// ====== Drawing ======
+function drawBanner(text){
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.60)";
+  ctx.fillRect(0, H-70, W, 70);
+  ctx.fillStyle = "#fff";
+  ctx.font = "18px Arial";
+  ctx.fillText(text, 18, H-28);
+  ctx.restore();
 }
 
 function draw(){
   ctx.clearRect(0, 0, W, H);
 
-  // Background clouds (cheap parallax)
+  // Clouds (parallax)
   ctx.save();
   ctx.globalAlpha = 0.25;
   ctx.fillStyle = "#fff";
@@ -214,7 +291,7 @@ function draw(){
   }
   ctx.restore();
 
-  // Translate by camera
+  // Camera translate
   ctx.save();
   ctx.translate(-cam.x, -cam.y);
 
@@ -226,53 +303,72 @@ function draw(){
     ctx.fillRect(p.x, p.y, p.w, 6);
   }
 
-  // Goal
+  // Goal (Professor)
   ctx.fillStyle = win ? "#00ff88" : "#ff3b3b";
   ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.fillRect(goal.x+6, goal.y+6, goal.w-12, 10);
 
-  // Coins
-  for (const c of coins){
-    if (c.taken) continue;
+  // Companies (NPC blocks)
+  for (const c of companies){
+    ctx.fillStyle = c.met ? "rgba(255,255,255,0.25)" : "#4b3cff";
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(c.x+6, c.y+6, c.w-12, 6);
+
+    // label
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.font = "12px Arial";
+    ctx.fillText(c.name, c.x, c.y - 6);
+  }
+
+  // Articles (yellow circles)
+  for (const a of articles){
+    if (a.taken) continue;
     ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+    ctx.arc(a.x, a.y, a.r, 0, Math.PI*2);
     ctx.fillStyle = "#ffd34d";
     ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    // tiny paper line
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(a.x - 4, a.y);
+    ctx.lineTo(a.x + 4, a.y);
+    ctx.stroke();
   }
 
-  // Player (simple “character”)
+  // Tuukka (player)
   ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(player.x, player.y, player.w, player.h);
+
   // face
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(player.x + 8, player.y + 12, 6, 6);
   ctx.fillRect(player.x + 20, player.y + 12, 6, 6);
 
+  // name tag
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "12px Arial";
+  ctx.fillText("Tuukka", player.x - 2, player.y - 6);
+
   ctx.restore();
 
-  // UI messages
-  if (win){
-    drawBanner("YOU WIN! Press R to restart");
-  } else if (messageTimer > 0){
+  // Bottom message
+  if (messageTimer > 0){
     messageTimer--;
-    drawBanner("+1 coin!");
+    drawBanner(messageText);
+  }
+  if (win){
+    drawBanner(messageText + " — Press R to restart");
   }
 }
 
-function drawBanner(text){
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(0, H-60, W, 60);
-  ctx.fillStyle = "#fff";
-  ctx.font = "20px Arial";
-  ctx.fillText(text, 18, H-22);
-  ctx.restore();
-}
-
+// ====== Main loop ======
 function loop(){
   doInput();
   if (!win){
