@@ -4,507 +4,1018 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Tuukka's Thesis Run</title>
+  <title>Tuukka’s Thesis Run</title>
   <style>
-    body { margin: 0; background: #111; display: grid; place-items: center; height: 100vh; font-family: Arial, sans-serif; }
-    canvas { background: linear-gradient(#67bfff, #c8f6ff); border: 2px solid #333; image-rendering: pixelated; }
-    .hud {
-      position: fixed; top: 12px; left: 12px; color: #fff;
-      font-size: 14px; line-height: 1.35;
-      text-shadow: 0 2px 8px rgba(0,0,0,.5);
-      background: rgba(0,0,0,0.25);
-      padding: 10px 12px;
-      border-radius: 10px;
-      backdrop-filter: blur(2px);
-      max-width: 380px;
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #0b0f14;
+      display: grid;
+      place-items: center;
+      height: 100vh;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      overflow: hidden;
     }
-    .hint { opacity: 0.9; margin-top: 6px; font-size: 12px; }
-    .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,0.12); margin-left:6px; }
-    .small { opacity: .85; font-size: 12px; }
+    canvas {
+      border: 2px solid #2b3440;
+      border-radius: 14px;
+      background: #67bfff;
+      box-shadow: 0 18px 60px rgba(0,0,0,.45);
+      image-rendering: pixelated;
+      max-width: min(98vw, 1100px);
+      max-height: 90vh;
+    }
+    .hud {
+      position: fixed;
+      top: 12px; left: 12px;
+      color: #fff;
+      font-size: 14px;
+      line-height: 1.35;
+      text-shadow: 0 2px 10px rgba(0,0,0,.55);
+      background: rgba(10,14,20,0.40);
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.10);
+      backdrop-filter: blur(4px);
+      min-width: 280px;
+    }
+    .row { display: flex; justify-content: space-between; gap: 12px; }
+    .badge {
+      display:inline-block;
+      padding:2px 8px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.12);
+      margin-left:6px;
+      font-size: 12px;
+    }
+    .bar {
+      height: 10px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.12);
+      margin-top: 6px;
+    }
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ffd34d, #00ff88);
+      border-radius: 999px;
+    }
+    .hint { opacity: 0.9; margin-top: 8px; font-size: 12px; }
+    .tiny { opacity: 0.85; font-size: 12px; margin-top: 6px; }
+
+    /* Mobile controls (optional) */
+    .controls {
+      position: fixed;
+      bottom: 14px;
+      left: 14px;
+      right: 14px;
+      display: none;
+      justify-content: space-between;
+      pointer-events: none;
+      gap: 14px;
+    }
+    .pad {
+      display: flex;
+      gap: 10px;
+      pointer-events: auto;
+    }
+    .btn {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: rgba(10,14,20,0.45);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff;
+      font-size: 20px;
+      display: grid;
+      place-items: center;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      box-shadow: 0 10px 28px rgba(0,0,0,.35);
+    }
+
+    @media (pointer: coarse) {
+      .controls { display: flex; }
+    }
   </style>
 </head>
 <body>
+
   <div class="hud">
-    <div><b>Tuukka’s Thesis Run</b> <span class="badge">Konecranes</span></div>
-    <div>Articles collected: <span id="articles">0</span> / <span id="total">0</span></div>
-    <div>Thesis length: <span id="pages">0</span> pages</div>
-    <div>Companies met: <span id="met">0</span> / <span id="metTotal">0</span></div>
-    <div class="small">Tip: Avoid competitors — they steal pages.</div>
-    <div class="hint">Move: ← → or A D | Jump: ↑ or W or Space | Restart: R</div>
+    <div class="row">
+      <div><b>Tuukka’s Thesis Run</b> <span class="badge">Konecranes</span></div>
+      <div id="fps" class="badge" style="opacity:.8;">—</div>
+    </div>
+    <div class="row"><div>Articles:</div><div><span id="articles">0</span> / <span id="total">0</span></div></div>
+    <div class="row"><div>Companies met:</div><div><span id="met">0</span> / <span id="metTotal">0</span></div></div>
+    <div class="row"><div>Thesis pages:</div><div><span id="pages">0</span></div></div>
+    <div class="bar"><div class="fill" id="pagesBar"></div></div>
+    <div class="tiny">Avoid competitors — they steal pages (but you can recover dropped pages).</div>
+    <div class="hint">Move: ← → / A D · Jump: ↑ / W / Space · Restart: R</div>
   </div>
 
-  <canvas id="c" width="960" height="540"></canvas>
+  <div class="controls">
+    <div class="pad">
+      <div class="btn" id="leftBtn">◀</div>
+      <div class="btn" id="rightBtn">▶</div>
+    </div>
+    <div class="pad">
+      <div class="btn" id="jumpBtn">⤒</div>
+      <div class="btn" id="rBtn">R</div>
+    </div>
+  </div>
+
+  <canvas id="c" width="1000" height="560"></canvas>
 
 <script>
-/* ====== TUUKKA'S THESIS RUN (single-file platformer) ====== */
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
 
-const hudArticles = document.getElementById("articles");
-const hudTotal = document.getElementById("total");
-const hudPages = document.getElementById("pages");
-const hudMet = document.getElementById("met");
-const hudMetTotal = document.getElementById("metTotal");
+  const ui = {
+    articles: document.getElementById("articles"),
+    total: document.getElementById("total"),
+    pages: document.getElementById("pages"),
+    met: document.getElementById("met"),
+    metTotal: document.getElementById("metTotal"),
+    pagesBar: document.getElementById("pagesBar"),
+    fps: document.getElementById("fps"),
+  };
 
-const keys = new Set();
-addEventListener("keydown", (e) => {
-  keys.add(e.key.toLowerCase());
-  if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key)) e.preventDefault();
-});
-addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+  // --- Input ---
+  const keys = new Set();
+  addEventListener("keydown", (e) => {
+    keys.add(e.key.toLowerCase());
+    if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key)) e.preventDefault();
+  }, { passive: false });
+  addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 
-const W = canvas.width, H = canvas.height;
+  function bindHold(btn, keyName) {
+    const down = (e) => { e.preventDefault(); keys.add(keyName); };
+    const up = (e) => { e.preventDefault(); keys.delete(keyName); };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("pointerleave", up);
+  }
+  const leftBtn = document.getElementById("leftBtn");
+  const rightBtn = document.getElementById("rightBtn");
+  const jumpBtn = document.getElementById("jumpBtn");
+  const rBtn = document.getElementById("rBtn");
+  if (leftBtn) bindHold(leftBtn, "arrowleft");
+  if (rightBtn) bindHold(rightBtn, "arrowright");
+  if (jumpBtn) bindHold(jumpBtn, " ");
+  if (rBtn) {
+    rBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); keys.add("r"); });
+    rBtn.addEventListener("pointerup", (e) => { e.preventDefault(); keys.delete("r"); });
+  }
 
-// Physics tuning
-const GRAVITY = 0.7;
-const FRICTION = 0.85;
-const MOVE_ACC = 0.9;
-const MAX_SPEED = 7.0;
-const JUMP_V = 13.5;
+  // --- Helpers ---
+  const W = canvas.width, H = canvas.height;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const rand = (a, b) => a + Math.random() * (b - a);
 
-// Camera
-const cam = { x: 0, y: 0 };
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
 
-function rectsOverlap(a, b){
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
-function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  // Simple particles
+  const particles = [];
+  function spawnParticles(x, y, n, color, power=1) {
+    for (let i=0; i<n; i++) {
+      particles.push({
+        x, y,
+        vx: rand(-2,2)*power,
+        vy: rand(-3,-0.5)*power,
+        life: rand(18, 45),
+        color,
+        size: rand(2,4)
+      });
+    }
+  }
 
-// Paper pickup collision uses rect-rect (simpler than circle now)
-function paperHit(paper, rect){
-  const r = { x: paper.x, y: paper.y, w: paper.w, h: paper.h };
-  return rectsOverlap(r, rect);
-}
+  // Message banner
+  let bannerText = "";
+  let bannerTimer = 0;
+  function banner(text, frames=60) {
+    bannerText = text;
+    bannerTimer = frames;
+  }
 
-// ====== Game state ======
-let win = false;
-let messageTimer = 0;
-let messageText = "";
+  // --- Game constants ---
+  const PHYS = {
+    gravity: 2200,      // px/s^2
+    moveAcc: 4200,      // px/s^2
+    maxSpeed: 420,      // px/s
+    jumpV: 720,         // px/s
+    frictionGround: 0.84,
+    frictionAir: 0.98
+  };
 
-// Tuukka (player)
-const player = {
-  name: "Tuukka",
-  org: "Konecranes",
-  x: 80, y: 100,
-  w: 34, h: 44,
-  vx: 0, vy: 0,
-  onGround: false,
-  articles: 0,
-  thesisPages: 10,
-  invuln: 0 // brief invulnerability after getting hit
-};
+  // --- Camera ---
+  const cam = { x: 0, y: 0, targetX: 0, targetY: 0 };
 
-// Longer level (more platforms)
-const platforms = [
-  // Ground (very long)
-  { x: -300, y: 480, w: 5200, h: 80 },
+  // --- World / Level ---
+  // Build a longer obstacle course: platforms + a few “floating” segments.
+  const world = {
+    startX: 90,
+    startY: 160,
+    groundY: 495,
+    width: 7200,
+  };
 
-  // Stage 1
-  { x: 180, y: 390, w: 170, h: 20 },
-  { x: 430, y: 330, w: 170, h: 20 },
-  { x: 690, y: 280, w: 200, h: 20 },
-  { x: 980, y: 360, w: 240, h: 20 },
+  const platforms = [
+    { x: -400, y: world.groundY, w: world.width + 800, h: 120 }, // ground slab
 
-  // Stage 2
-  { x: 1320, y: 310, w: 200, h: 20 },
-  { x: 1570, y: 250, w: 220, h: 20 },
-  { x: 1850, y: 360, w: 240, h: 20 },
-  { x: 2160, y: 300, w: 220, h: 20 },
+    // Section A: warm-up steps
+    { x: 220, y: 410, w: 180, h: 18 },
+    { x: 470, y: 350, w: 170, h: 18 },
+    { x: 720, y: 300, w: 210, h: 18 },
+    { x: 1010, y: 375, w: 260, h: 18 },
 
-  // Stage 3
-  { x: 2460, y: 240, w: 240, h: 20 },
-  { x: 2760, y: 360, w: 260, h: 20 },
-  { x: 3080, y: 290, w: 220, h: 20 },
-  { x: 3360, y: 230, w: 240, h: 20 },
+    // Section B: alternating heights
+    { x: 1370, y: 330, w: 220, h: 18 },
+    { x: 1650, y: 270, w: 240, h: 18 },
+    { x: 1950, y: 360, w: 260, h: 18 },
+    { x: 2280, y: 300, w: 220, h: 18 },
 
-  // Final stretch (stair-ish)
-  { x: 3680, y: 380, w: 180, h: 20 },
-  { x: 3880, y: 340, w: 180, h: 20 },
-  { x: 4080, y: 300, w: 180, h: 20 },
-  { x: 4280, y: 260, w: 180, h: 20 }
-];
+    // Section C: longer run + higher hops
+    { x: 2620, y: 260, w: 260, h: 18 },
+    { x: 2950, y: 380, w: 280, h: 18 },
+    { x: 3300, y: 320, w: 240, h: 18 },
+    { x: 3600, y: 250, w: 260, h: 18 },
 
-// Articles now look like paper sheets
-// Each = +1 page
-const articles = [
-  // Stage 1
-  { x: 230, y: 350, w: 18, h: 22, taken: false },
-  { x: 480, y: 290, w: 18, h: 22, taken: false },
-  { x: 760, y: 240, w: 18, h: 22, taken: false },
-  { x: 1070, y: 320, w: 18, h: 22, taken: false },
+    // Section D: “staircase”
+    { x: 4000, y: 420, w: 190, h: 18 },
+    { x: 4220, y: 380, w: 190, h: 18 },
+    { x: 4440, y: 340, w: 190, h: 18 },
+    { x: 4660, y: 300, w: 190, h: 18 },
+    { x: 4880, y: 260, w: 190, h: 18 },
 
-  // Stage 2
-  { x: 1400, y: 270, w: 18, h: 22, taken: false },
-  { x: 1650, y: 210, w: 18, h: 22, taken: false },
-  { x: 1950, y: 320, w: 18, h: 22, taken: false },
-  { x: 2240, y: 260, w: 18, h: 22, taken: false },
+    // Section E: final gauntlet
+    { x: 5250, y: 360, w: 260, h: 18 },
+    { x: 5570, y: 300, w: 220, h: 18 },
+    { x: 5850, y: 240, w: 240, h: 18 },
+    { x: 6160, y: 340, w: 260, h: 18 },
+    { x: 6480, y: 280, w: 230, h: 18 },
+  ];
 
-  // Stage 3
-  { x: 2540, y: 200, w: 18, h: 22, taken: false },
-  { x: 2860, y: 320, w: 18, h: 22, taken: false },
-  { x: 3160, y: 250, w: 18, h: 22, taken: false },
-  { x: 3440, y: 190, w: 18, h: 22, taken: false },
+  // Articles (paper sheets) and dropped pages (recoverable)
+  const articles = [];
+  const droppedPages = [];
 
-  // Final stretch
-  { x: 3720, y: 340, w: 18, h: 22, taken: false },
-  { x: 3920, y: 300, w: 18, h: 22, taken: false },
-  { x: 4120, y: 260, w: 18, h: 22, taken: false },
-  { x: 4320, y: 220, w: 18, h: 22, taken: false }
-];
+  // Place articles near platforms + some on ground
+  function seedArticles() {
+    articles.length = 0;
+    const spots = [
+      [260, 372], [520, 312], [780, 262], [1120, 337],
+      [1420, 292], [1730, 232], [2030, 322], [2350, 262],
+      [2720, 222], [3050, 342], [3400, 282], [3700, 212],
+      [4040, 382], [4260, 342], [4480, 302], [4700, 262], [4920, 222],
+      [5320, 322], [5640, 262], [5920, 202], [6240, 302], [6560, 242]
+    ];
+    for (const [x,y] of spots) {
+      articles.push({ x, y, w: 18, h: 22, taken: false, bob: rand(0, Math.PI*2) });
+    }
+    ui.total.textContent = articles.length;
+  }
 
-// Real crane companies as neutral networking NPCs ("meet other companies")
-const companies = [
-  { name: "Liebherr",     x: 560,  y: 304, w: 92, h: 26, met: false },
-  { name: "Tadano",       x: 1160, y: 334, w: 92, h: 26, met: false },
-  { name: "Demag",        x: 1600, y: 224, w: 92, h: 26, met: false },
-  { name: "Manitowoc",    x: 2060, y: 334, w: 110, h: 26, met: false },
-  { name: "Terex",        x: 2580, y: 214, w: 92, h: 26, met: false },
-  { name: "SANY",         x: 3000, y: 264, w: 92, h: 26, met: false },
-  { name: "Zoomlion",     x: 3440, y: 204, w: 100, h: 26, met: false },
-  { name: "XCMG",         x: 3920, y: 314, w: 92, h: 26, met: false },
-];
+  // Real companies as “meet” signposts (neutral)
+  const companies = [
+    { name: "Liebherr",  x: 600,  y: 324, w: 120, h: 28, met: false },
+    { name: "Tadano",    x: 1600, y: 244, w: 110, h: 28, met: false },
+    { name: "Demag",     x: 2300, y: 274, w: 110, h: 28, met: false },
+    { name: "Manitowoc", x: 3050, y: 304, w: 140, h: 28, met: false },
+    { name: "Terex",     x: 3720, y: 234, w: 110, h: 28, met: false },
+    { name: "SANY",      x: 4460, y: 274, w: 110, h: 28, met: false },
+    { name: "Zoomlion",  x: 5580, y: 262, w: 140, h: 28, met: false },
+    { name: "XCMG",      x: 6500, y: 242, w: 110, h: 28, met: false },
+  ];
 
-// Parody competitors as enemies (they steal pages)
-const enemies = [
-  { name: "kokecranes",  x: 880,  y: 454, w: 46, h: 26, vx: 1.6, minX: 760,  maxX: 1080, steal: 2 },
-  { name: "satateräs",   x: 1760, y: 454, w: 46, h: 26, vx: 1.9, minX: 1600, maxX: 1980, steal: 3 },
-  { name: "CraneForge",  x: 2700, y: 454, w: 46, h: 26, vx: 2.1, minX: 2520, maxX: 2980, steal: 2 },
-  { name: "HoistWorks",  x: 3500, y: 454, w: 46, h: 26, vx: 2.3, minX: 3320, maxX: 3700, steal: 3 },
-];
+  // Competitor enemies (parody/fictitious) — they steal pages
+  const enemies = [
+    { name: "kokecranes", x: 980,  y: world.groundY - 26, w: 52, h: 26, vx: 95, minX: 880,  maxX: 1200, steal: 2 },
+    { name: "satateräs",  x: 2120, y: world.groundY - 26, w: 52, h: 26, vx: 120, minX: 1950, maxX: 2380, steal: 3 },
+    { name: "HoistBros",  x: 3500, y: world.groundY - 26, w: 52, h: 26, vx: 135, minX: 3300, maxX: 3720, steal: 2 },
+    { name: "MegaLiftix", x: 5850, y: world.groundY - 26, w: 52, h: 26, vx: 150, minX: 5650, maxX: 6100, steal: 3 },
+  ];
 
-// Finish line / professor (farther away now)
-const goal = { x: 4620, y: 420, w: 46, h: 60 };
+  // Professor / goal
+  const goal = { x: 6900, y: world.groundY - 60, w: 52, h: 60 };
 
-function updateHud(){
-  hudArticles.textContent = player.articles;
-  hudTotal.textContent = articles.length;
-  hudPages.textContent = player.thesisPages;
+  // Player (Tuukka)
+  const player = {
+    x: world.startX,
+    y: world.startY,
+    w: 34,
+    h: 44,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+    faceRight: true,
+    runT: 0,
+    invuln: 0,        // frames
+    articles: 0,
+    pages: 12,         // base pages
+    companiesMet: 0,
+  };
 
-  const metCount = companies.filter(c => c.met).length;
-  hudMet.textContent = metCount;
-  hudMetTotal.textContent = companies.length;
-}
+  function updateHud() {
+    ui.articles.textContent = player.articles;
+    ui.pages.textContent = player.pages;
+    const metCount = companies.filter(c => c.met).length;
+    player.companiesMet = metCount;
+    ui.met.textContent = metCount;
+    ui.metTotal.textContent = companies.length;
 
-function showMessage(text, frames=60){
-  messageText = text;
-  messageTimer = frames;
-}
+    // thesis bar: map pages to 0..40 for visual fullness
+    const maxVisual = 40;
+    const pct = clamp(player.pages / maxVisual, 0, 1) * 100;
+    ui.pagesBar.style.width = pct.toFixed(0) + "%";
+  }
 
-function resetLevel(){
-  player.x = 80; player.y = 100;
-  player.vx = 0; player.vy = 0;
-  player.onGround = false;
-
-  player.articles = 0;
-  player.thesisPages = 10;
-  player.invuln = 0;
-
-  for (const a of articles) a.taken = false;
-  for (const c of companies) c.met = false;
-
-  // Reset enemies to start-ish positions (optional)
-  enemies[0].x = 880;
-  enemies[1].x = 1760;
-  enemies[2].x = 2700;
-  enemies[3].x = 3500;
-
-  win = false;
-  messageTimer = 0;
-  messageText = "";
-  updateHud();
-}
-
-// ====== Input ======
-function doInput(){
-  const left  = keys.has("arrowleft") || keys.has("a");
-  const right = keys.has("arrowright") || keys.has("d");
-  const jump  = keys.has("arrowup") || keys.has("w") || keys.has(" ");
-
-  if (left)  player.vx -= MOVE_ACC;
-  if (right) player.vx += MOVE_ACC;
-
-  player.vx = clamp(player.vx, -MAX_SPEED, MAX_SPEED);
-
-  if (jump && player.onGround){
-    player.vy = -JUMP_V;
+  function reset() {
+    player.x = world.startX;
+    player.y = world.startY;
+    player.vx = 0;
+    player.vy = 0;
     player.onGround = false;
+    player.faceRight = true;
+    player.runT = 0;
+    player.invuln = 0;
+
+    player.articles = 0;
+    player.pages = 12;
+
+    for (const a of articles) a.taken = false;
+    for (const c of companies) c.met = false;
+    droppedPages.length = 0;
+
+    // Reset enemies to start positions
+    enemies[0].x = 980;
+    enemies[1].x = 2120;
+    enemies[2].x = 3500;
+    enemies[3].x = 5850;
+
+    win = false;
+    endPanel = null;
+    bannerText = "";
+    bannerTimer = 0;
+
+    updateHud();
   }
 
-  if (keys.has("r")) resetLevel();
-}
+  // --- Jump edge detection ---
+  let jumpWasDown = false;
+  function jumpPressed() {
+    const down = keys.has("arrowup") || keys.has("w") || keys.has(" ");
+    const pressed = down && !jumpWasDown;
+    jumpWasDown = down;
+    return pressed;
+  }
 
-// ====== Physics & collisions ======
-function applyPhysics(){
-  player.vy += GRAVITY;
-  player.vx *= player.onGround ? FRICTION : 0.98;
+  // --- Win state panel ---
+  let win = false;
+  let endPanel = null;
 
-  // Move X
-  player.x += player.vx;
-  for (const p of platforms){
-    if (rectsOverlap(player, p)){
-      if (player.vx > 0) player.x = p.x - player.w;
-      if (player.vx < 0) player.x = p.x + p.w;
-      player.vx = 0;
+  function gradeFromPages(p) {
+    // 1..5 scale
+    if (p >= 30) return 5;
+    if (p >= 24) return 4;
+    if (p >= 18) return 3;
+    if (p >= 14) return 2;
+    return 1;
+  }
+
+  function computeResult() {
+    const met = companies.filter(c => c.met).length;
+    const networkingBonusPages = met; // +1 page per company met
+    const finalPages = player.pages + networkingBonusPages;
+
+    const grade = gradeFromPages(finalPages);
+    const comment =
+      grade === 5 ? "Excellent work. Strong research + great networking." :
+      grade === 4 ? "Very good. Solid thesis with convincing references." :
+      grade === 3 ? "Good. Clear structure, but could be expanded." :
+      grade === 2 ? "Passable. Needs more depth and references." :
+                    "Not enough content. Collect more articles.";
+
+    return { met, networkingBonusPages, finalPages, grade, comment };
+  }
+
+  // --- Game Loop Timing ---
+  let last = performance.now();
+  let fpsSmooth = 60;
+
+  // --- Physics / Collisions ---
+  function resolveCollisionsX(ent, dt) {
+    ent.x += ent.vx * dt;
+    for (const p of platforms) {
+      if (rectsOverlap(ent, p)) {
+        if (ent.vx > 0) ent.x = p.x - ent.w;
+        else if (ent.vx < 0) ent.x = p.x + p.w;
+        ent.vx = 0;
+      }
     }
   }
-
-  // Move Y
-  player.y += player.vy;
-  player.onGround = false;
-  for (const p of platforms){
-    if (rectsOverlap(player, p)){
-      if (player.vy > 0){
-        player.y = p.y - player.h;
-        player.vy = 0;
-        player.onGround = true;
-      } else if (player.vy < 0){
-        player.y = p.y + p.h;
-        player.vy = 0;
+  function resolveCollisionsY(ent, dt) {
+    ent.y += ent.vy * dt;
+    ent.onGround = false;
+    for (const p of platforms) {
+      if (rectsOverlap(ent, p)) {
+        if (ent.vy > 0) {
+          ent.y = p.y - ent.h;
+          ent.vy = 0;
+          ent.onGround = true;
+        } else if (ent.vy < 0) {
+          ent.y = p.y + p.h;
+          ent.vy = 0;
+        }
       }
     }
   }
 
-  // Fall off world
-  if (player.y > 950) {
-    showMessage("Tuukka fell! Restarting…", 60);
-    resetLevel();
+  function dropRecoverablePages(x, y, amount) {
+    for (let i=0; i<amount; i++) {
+      droppedPages.push({
+        x: x + rand(-10, 10),
+        y: y + rand(-10, 0),
+        w: 12, h: 16,
+        vx: rand(-180, 180),
+        vy: rand(-420, -220),
+        life: 6.0, // seconds until vanish
+        bob: rand(0, Math.PI*2),
+      });
+    }
   }
-}
 
-// ====== Professor grading ======
-function professorGrade(pages){
-  // 1–5 grade scale
-  if (pages >= 28) return 5;
-  if (pages >= 23) return 4;
-  if (pages >= 18) return 3;
-  if (pages >= 14) return 2;
-  return 1;
-}
+  function updateDroppedPages(dt) {
+    // physics-like
+    for (let i=droppedPages.length-1; i>=0; i--) {
+      const d = droppedPages[i];
+      d.vy += PHYS.gravity * 0.75 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.life -= dt;
 
-// ====== Enemies ======
-function updateEnemies(){
-  for (const e of enemies){
-    e.x += e.vx;
-    if (e.x < e.minX || e.x + e.w > e.maxX) e.vx *= -1;
+      // collide with ground only (simple)
+      const groundTop = world.groundY;
+      if (d.y + d.h > groundTop) {
+        d.y = groundTop - d.h;
+        d.vy *= -0.25;
+        d.vx *= 0.72;
+      }
 
-    // Keep enemies on ground visually
-    e.y = 480 - 80 - e.h;
+      // pickup by player
+      if (rectsOverlap(d, player)) {
+        player.pages += 1;
+        spawnParticles(d.x+6, d.y+8, 8, "#00ff88", 1.0);
+        droppedPages.splice(i, 1);
+        updateHud();
+        continue;
+      }
 
-    // Collision steals pages
-    if (player.invuln <= 0 && rectsOverlap(player, e)){
-      const stolen = Math.min(e.steal, player.thesisPages); // don’t go negative
-      player.thesisPages = Math.max(0, player.thesisPages - stolen);
-      player.invuln = 45;
+      if (d.life <= 0) droppedPages.splice(i, 1);
+    }
+  }
 
-      // Knockback
-      const dir = (player.x + player.w/2) < (e.x + e.w/2) ? -1 : 1;
-      player.vx = 7 * dir;
-      player.vy = -7;
+  // --- Enemies ---
+  function updateEnemies(dt) {
+    for (const e of enemies) {
+      e.x += e.vx * dt;
+      if (e.x < e.minX || e.x + e.w > e.maxX) e.vx *= -1;
+      e.y = world.groundY - e.h;
 
-      updateHud();
-      showMessage(`${e.name} stole ${stolen} page(s)!`, 70);
+      // collision steals pages
+      if (!win && player.invuln <= 0 && rectsOverlap(player, e)) {
+        const stolen = Math.min(e.steal, player.pages);
+        player.pages = Math.max(0, player.pages - stolen);
 
-      // Optional: if pages hit 0 => restart
-      if (player.thesisPages <= 0){
-        showMessage("No pages left! Restarting…", 80);
-        setTimeout(resetLevel, 200); // tiny delay
+        // drop recoverable pages
+        dropRecoverablePages(player.x + player.w/2, player.y + 8, stolen);
+
+        // knockback
+        const dir = (player.x + player.w/2) < (e.x + e.w/2) ? -1 : 1;
+        player.vx = 520 * dir;
+        player.vy = -420;
+        player.invuln = 0.9; // seconds invulnerability
+
+        spawnParticles(player.x + player.w/2, player.y + player.h/2, 14, "#ff6b6b", 1.2);
+        banner(`${e.name} stole ${stolen} page(s)! Recover dropped pages!`, 90);
+
+        updateHud();
+
+        if (player.pages <= 0) {
+          banner("No pages left! Restarting…", 90);
+          setTimeout(reset, 250);
+        }
       }
     }
   }
-}
 
-// ====== Game logic ======
-function gameLogic(){
-  const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
-
-  // Collect articles => +1 thesis page
-  for (const a of articles){
-    if (!a.taken && paperHit(a, playerRect)){
-      a.taken = true;
-      player.articles++;
-      player.thesisPages++;
-      updateHud();
-      showMessage("Collected an article → thesis +1 page", 45);
+  // --- Articles (paper pickups) ---
+  function updateArticles(dt, t) {
+    for (const a of articles) {
+      if (a.taken) continue;
+      a.bob += dt * 3.2;
+      // pickup
+      const hitBox = { x: a.x, y: a.y + Math.sin(a.bob)*3, w: a.w, h: a.h };
+      if (rectsOverlap(hitBox, player)) {
+        a.taken = true;
+        player.articles += 1;
+        player.pages += 1;
+        spawnParticles(a.x + a.w/2, a.y + a.h/2, 16, "#ffd34d", 1.1);
+        banner("Collected an article → thesis +1 page", 60);
+        updateHud();
+      }
     }
   }
 
-  // Meet companies (touch block)
-  for (const c of companies){
-    const cr = { x: c.x, y: c.y, w: c.w, h: c.h };
-    if (!c.met && rectsOverlap(playerRect, cr)){
-      c.met = true;
-      updateHud();
-      showMessage(`Met ${c.name} 🤝`, 60);
+  // --- Companies (meet signposts) ---
+  function updateCompanies() {
+    for (const c of companies) {
+      if (c.met) continue;
+      const r = { x: c.x, y: c.y, w: c.w, h: c.h };
+      if (rectsOverlap(r, player)) {
+        c.met = true;
+        spawnParticles(c.x + c.w/2, c.y + 6, 10, "#6aa6ff", 0.9);
+        banner(`Met ${c.name} 🤝 Networking +1 page at the end`, 80);
+        updateHud();
+      }
     }
   }
 
-  // Enemies
-  updateEnemies();
-  if (player.invuln > 0) player.invuln--;
-
-  // Finish line
-  if (!win && rectsOverlap(playerRect, goal)){
-    win = true;
-    const grade = professorGrade(player.thesisPages);
-    showMessage(`Professor's grade: ${grade}/5 (Pages: ${player.thesisPages})`, 999999);
+  // --- Goal ---
+  function updateGoal() {
+    if (win) return;
+    if (rectsOverlap(goal, player)) {
+      win = true;
+      endPanel = computeResult();
+      banner(`Professor grade: ${endPanel.grade}/5 (Final pages: ${endPanel.finalPages})`, 999999);
+      spawnParticles(goal.x + goal.w/2, goal.y + 12, 30, "#00ff88", 1.2);
+    }
   }
 
-  // Camera follows player
-  cam.x = Math.max(0, player.x - W * 0.35);
-}
+  // --- Player update ---
+  function updatePlayer(dt) {
+    const left  = keys.has("arrowleft") || keys.has("a");
+    const right = keys.has("arrowright") || keys.has("d");
 
-// ====== Drawing ======
-function drawBanner(text){
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.60)";
-  ctx.fillRect(0, H-70, W, 70);
-  ctx.fillStyle = "#fff";
-  ctx.font = "18px Arial";
-  ctx.fillText(text, 18, H-28);
-  ctx.restore();
-}
+    // Acceleration
+    if (left)  player.vx -= PHYS.moveAcc * dt;
+    if (right) player.vx += PHYS.moveAcc * dt;
 
-function drawPaper(x, y, w, h){
-  // Paper body
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x, y, w, h);
+    // Facing + run anim
+    if (left) player.faceRight = false;
+    if (right) player.faceRight = true;
 
-  // Folded corner
-  ctx.fillStyle = "#e8e8e8";
-  ctx.beginPath();
-  ctx.moveTo(x + w - 6, y);
-  ctx.lineTo(x + w, y);
-  ctx.lineTo(x + w, y + 6);
-  ctx.closePath();
-  ctx.fill();
+    // Clamp speed
+    player.vx = clamp(player.vx, -PHYS.maxSpeed, PHYS.maxSpeed);
 
-  // Outline
-  ctx.strokeStyle = "rgba(0,0,0,0.22)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    // Jump
+    if (jumpPressed() && player.onGround) {
+      player.vy = -PHYS.jumpV;
+      player.onGround = false;
+      spawnParticles(player.x + player.w/2, player.y + player.h, 10, "#ffffff", 0.8);
+    }
 
-  // Text lines
-  ctx.strokeStyle = "rgba(0,0,0,0.18)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x + 3, y + 7);
-  ctx.lineTo(x + w - 3, y + 7);
-  ctx.moveTo(x + 3, y + 11);
-  ctx.lineTo(x + w - 6, y + 11);
-  ctx.moveTo(x + 3, y + 15);
-  ctx.lineTo(x + w - 5, y + 15);
-  ctx.stroke();
-}
+    // Gravity
+    player.vy += PHYS.gravity * dt;
 
-function draw(){
-  ctx.clearRect(0, 0, W, H);
+    // Friction
+    player.vx *= player.onGround ? PHYS.frictionGround : PHYS.frictionAir;
 
-  // Clouds (parallax)
-  ctx.save();
-  ctx.globalAlpha = 0.25;
-  ctx.fillStyle = "#fff";
-  for (let i=0; i<10; i++){
-    const x = (i*260 - (cam.x*0.3)%260);
-    const y = 60 + (i%3)*40;
+    // Move & collide
+    resolveCollisionsX(player, dt);
+    resolveCollisionsY(player, dt);
+
+    // fall off
+    if (player.y > 1200) {
+      banner("Tuukka fell! Restarting…", 70);
+      setTimeout(reset, 200);
+    }
+
+    // invulnerability timer (seconds)
+    if (player.invuln > 0) player.invuln -= dt;
+
+    // restart
+    if (keys.has("r")) reset();
+
+    // run animation tick
+    const speed = Math.abs(player.vx);
+    if (player.onGround && speed > 15) player.runT += dt * (speed/150) * 10;
+    else player.runT = lerp(player.runT, 0, 0.2);
+  }
+
+  // --- Camera update ---
+  function updateCamera(dt) {
+    cam.targetX = clamp(player.x - W * 0.38, 0, world.width - W);
+    cam.x = lerp(cam.x, cam.targetX, 1 - Math.pow(0.001, dt)); // smooth
+  }
+
+  // --- Draw helpers ---
+  function drawRoundedRect(x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
     ctx.beginPath();
-    ctx.ellipse(x+120, y, 70, 20, 0, 0, Math.PI*2);
-    ctx.ellipse(x+170, y+10, 60, 18, 0, 0, Math.PI*2);
-    ctx.ellipse(x+80, y+10, 50, 16, 0, 0, Math.PI*2);
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // Camera translate
-  ctx.save();
-  ctx.translate(-cam.x, 0);
-
-  // Platforms
-  for (const p of platforms){
-    ctx.fillStyle = "#2c7a3f";
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.fillStyle = "rgba(0,0,0,0.12)";
-    ctx.fillRect(p.x, p.y, p.w, 6);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
   }
 
-  // Finish line (Professor)
-  ctx.fillStyle = win ? "#00ff88" : "#ff3b3b";
-  ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.fillRect(goal.x+6, goal.y+6, goal.w-12, 10);
+  function drawPaper(x, y, w, h, glow=false) {
+    if (glow) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#ffd34d";
+      drawRoundedRect(x-3, y-3, w+6, h+6, 4);
+      ctx.fill();
+      ctx.restore();
+    }
 
-  // Company NPCs
-  for (const c of companies){
-    ctx.fillStyle = c.met ? "rgba(255,255,255,0.18)" : "#4b3cff";
-    ctx.fillRect(c.x, c.y, c.w, c.h);
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillRect(c.x+6, c.y+6, c.w-12, 6);
-
-    ctx.fillStyle = "rgba(0,0,0,0.75)";
-    ctx.font = "12px Arial";
-    ctx.fillText(c.name, c.x, c.y - 6);
-  }
-
-  // Articles (papers)
-  for (const a of articles){
-    if (a.taken) continue;
-    drawPaper(a.x, a.y, a.w, a.h);
-  }
-
-  // Enemies (competitors)
-  for (const e of enemies){
-    ctx.fillStyle = "#7a3b1a";
-    ctx.fillRect(e.x, e.y, e.w, e.h);
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillRect(e.x + 6, e.y + 6, e.w - 12, 6);
-
-    ctx.fillStyle = "rgba(0,0,0,0.75)";
-    ctx.font = "12px Arial";
-    ctx.fillText(e.name, e.x - 2, e.y - 6);
-  }
-
-  // Tuukka (player) — blink when invulnerable
-  const blink = player.invuln > 0 && Math.floor(player.invuln/6) % 2 === 0;
-  if (!blink){
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(player.x, player.y, player.w, player.h);
-
-    // face
+    // Paper body
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(player.x + 8, player.y + 12, 6, 6);
-    ctx.fillRect(player.x + 20, player.y + 12, 6, 6);
+    drawRoundedRect(x, y, w, h, 3);
+    ctx.fill();
+
+    // Folded corner
+    ctx.fillStyle = "#eaeaea";
+    ctx.beginPath();
+    ctx.moveTo(x + w - 6, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Text lines
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + 7);  ctx.lineTo(x + w - 3, y + 7);
+    ctx.moveTo(x + 3, y + 11); ctx.lineTo(x + w - 7, y + 11);
+    ctx.moveTo(x + 3, y + 15); ctx.lineTo(x + w - 6, y + 15);
+    ctx.stroke();
+  }
+
+  function drawSign(c) {
+    // signpost + label
+    ctx.save();
+    ctx.translate(c.x, c.y);
+
+    // post
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(6, 28, 6, 22);
+
+    // sign
+    ctx.fillStyle = c.met ? "rgba(180,255,220,0.25)" : "rgba(90,140,255,0.85)";
+    drawRoundedRect(0, 0, c.w, c.h, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(10,14,20,0.85)";
+    ctx.font = "12px system-ui, Segoe UI, Arial";
+    ctx.fillText(c.name, 10, 18);
+
+    ctx.restore();
+  }
+
+  function drawEnemy(e, t) {
+    // competitor “bot” look
+    const bob = Math.sin(t*6 + e.x*0.01) * 1.2;
+    const x = e.x, y = e.y + bob;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // body
+    ctx.fillStyle = "#7a3b1a";
+    drawRoundedRect(0, 0, e.w, e.h, 6);
+    ctx.fill();
+
+    // highlight
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    drawRoundedRect(6, 5, e.w-12, 7, 4);
+    ctx.fill();
+
+    // eyes
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(12, 12, 6, 4);
+    ctx.fillRect(26, 12, 6, 4);
+
+    // label
+    ctx.fillStyle = "rgba(0,0,0,0.70)";
+    ctx.font = "11px system-ui, Segoe UI, Arial";
+    ctx.fillText(e.name, -2, -6);
+
+    ctx.restore();
+  }
+
+  function drawTuukka(t) {
+    const blink = player.invuln > 0 && (Math.floor(t*20) % 2 === 0);
+    if (blink) return;
+
+    const x = player.x, y = player.y;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // shadow
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(player.w/2, player.h+6, 16, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // simple “pixel” body with small animation
+    const step = Math.sin(player.runT) * 2;
+    const arm = Math.cos(player.runT) * 2;
+
+    // torso
+    ctx.fillStyle = "#111";
+    drawRoundedRect(4, 6, player.w-8, player.h-10, 6);
+    ctx.fill();
+
+    // Konecranes red chest stripe (just a vibe)
+    ctx.fillStyle = "#d62828";
+    ctx.fillRect(8, 20, player.w-16, 6);
+
+    // head
+    ctx.fillStyle = "#1a1a1a";
+    drawRoundedRect(8, 0, player.w-16, 16, 6);
+    ctx.fill();
+
+    // eyes
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(player.faceRight ? 18 : 12, 6, 4, 4);
+    ctx.fillRect(player.faceRight ? 24 : 18, 6, 4, 4);
+
+    // legs
+    ctx.fillStyle = "#0c0c0c";
+    ctx.fillRect(10, 34 + step, 6, 10);
+    ctx.fillRect(20, 34 - step, 6, 10);
+
+    // arms
+    ctx.fillRect(2, 22 + arm, 6, 8);
+    ctx.fillRect(player.w-8, 22 - arm, 6, 8);
 
     // name tag
     ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.font = "12px Arial";
-    ctx.fillText("Tuukka", player.x - 2, player.y - 6);
+    ctx.font = "12px system-ui, Segoe UI, Arial";
+    ctx.fillText("Tuukka", -2, -6);
+
+    ctx.restore();
   }
 
-  ctx.restore();
+  function drawPlatform(p) {
+    // grassy top + dark base
+    ctx.fillStyle = "#2f7d43";
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(p.x, p.y, p.w, 5);
+    // small dots texture (cheap)
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    for (let i = 0; i < p.w; i += 38) {
+      ctx.fillRect(p.x + i + 8, p.y + 10, 3, 3);
+    }
+  }
 
-  // Bottom message
-  if (messageTimer > 0){
-    messageTimer--;
-    drawBanner(messageText);
-  }
-  if (win){
-    drawBanner(messageText + " — Press R to restart");
-  }
-}
+  function drawBackground(t) {
+    // Sky gradient
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#6cc7ff");
+    g.addColorStop(0.55, "#aee7ff");
+    g.addColorStop(1, "#d8fbff");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
 
-// ====== Main loop ======
-function loop(){
-  doInput();
-  if (!win){
-    applyPhysics();
-    gameLogic();
+    // Clouds (parallax)
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#fff";
+    for (let i=0; i<10; i++) {
+      const x = (i*240 - (cam.x*0.22)%240);
+      const y = 60 + (i%4)*34 + Math.sin(t*0.7 + i)*4;
+      ctx.beginPath();
+      ctx.ellipse(x+120, y, 72, 20, 0, 0, Math.PI*2);
+      ctx.ellipse(x+170, y+10, 58, 18, 0, 0, Math.PI*2);
+      ctx.ellipse(x+80,  y+10, 48, 16, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Distant hills (parallax)
+    ctx.save();
+    ctx.translate(-(cam.x*0.12), 0);
+    ctx.fillStyle = "rgba(50,120,95,0.35)";
+    ctx.beginPath();
+    ctx.moveTo(-200, H);
+    for (let x=-200; x<W+400; x+=140) {
+      ctx.quadraticCurveTo(x+70, 380 + Math.sin((x+t*40)*0.01)*18, x+140, 420);
+    }
+    ctx.lineTo(W+400, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // “Factory skyline” silhouette
+    ctx.save();
+    ctx.translate(-(cam.x*0.20), 0);
+    ctx.fillStyle = "rgba(10,20,25,0.25)";
+    for (let i=0; i<14; i++) {
+      const x = i*120 + 30;
+      const h = 70 + (i%5)*18;
+      ctx.fillRect(x, 340 - h, 70, h);
+      // chimneys
+      if (i%3===0) ctx.fillRect(x+50, 340 - h - 28, 12, 28);
+    }
+    ctx.restore();
   }
-  draw();
+
+  function drawEndPanel(res) {
+    const w = 640, h = 280;
+    const x = (W - w)/2;
+    const y = 120;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "rgba(10,14,20,0.85)";
+    drawRoundedRect(x, y, w, h, 16);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "22px system-ui, Segoe UI, Arial";
+    ctx.fillText("Professor’s Evaluation", x+22, y+42);
+
+    ctx.font = "16px system-ui, Segoe UI, Arial";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fillText(`Base thesis pages: ${player.pages}`, x+22, y+82);
+    ctx.fillText(`Networking bonus: +${res.networkingBonusPages} (companies met: ${res.met})`, x+22, y+110);
+    ctx.fillText(`Final pages: ${res.finalPages}`, x+22, y+138);
+
+    // grade badge
+    ctx.fillStyle = res.grade >= 4 ? "#00ff88" : (res.grade >= 3 ? "#ffd34d" : "#ff6b6b");
+    drawRoundedRect(x+w-150, y+70, 120, 70, 18);
+    ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.font = "18px system-ui, Segoe UI, Arial";
+    ctx.fillText("Grade", x+w-118, y+98);
+    ctx.font = "30px system-ui, Segoe UI, Arial";
+    ctx.fillText(`${res.grade}/5`, x+w-118, y+130);
+
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "16px system-ui, Segoe UI, Arial";
+    ctx.fillText(res.comment, x+22, y+180);
+
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.font = "14px system-ui, Segoe UI, Arial";
+    ctx.fillText("Press R to restart and aim for a higher grade.", x+22, y+230);
+
+    ctx.restore();
+  }
+
+  function drawBanner() {
+    if (bannerTimer <= 0) return;
+    bannerTimer--;
+
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(10,14,20,0.65)";
+    ctx.fillRect(0, H-78, W, 78);
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px system-ui, Segoe UI, Arial";
+    ctx.fillText(bannerText, 18, H-30);
+    ctx.restore();
+  }
+
+  function drawParticles(dt) {
+    for (let i=particles.length-1; i>=0; i--) {
+      const p = particles[i];
+      p.life -= 1;
+      p.vy += 0.12;
+      p.x += p.vx;
+      p.y += p.vy;
+
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life/45));
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawWorld(t) {
+    drawBackground(t);
+
+    // world translate
+    ctx.save();
+    ctx.translate(-cam.x, 0);
+
+    // Platforms
+    for (const p of platforms) drawPlatform(p);
+
+    // Articles
+    for (const a of articles) {
+      if (a.taken) continue;
+      const bobY = Math.sin(a.bob) * 3;
+      drawPaper(a.x, a.y + bobY, a.w, a.h, true);
+    }
+
+    // Dropped pages (recoverable)
+    for (const d of droppedPages) {
+      const bobY = Math.sin(d.bob) * 2;
+      drawPaper(d.x, d.y + bobY, d.w, d.h, false);
+    }
+
+    // Companies
+    for (const c of companies) drawSign(c);
+
+    // Enemies
+    for (const e of enemies) drawEnemy(e, t);
+
+    // Goal (Professor)
+    ctx.save();
+    ctx.translate(goal.x, goal.y);
+    // professor “podium”
+    ctx.fillStyle = "rgba(255,0,0,0.85)";
+    drawRoundedRect(0, 0, goal.w, goal.h, 10);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(8, 8, goal.w-16, 10);
+
+    // label
+    ctx.fillStyle = "rgba(0,0,0,0.70)";
+    ctx.font = "12px system-ui, Segoe UI, Arial";
+    ctx.fillText("Professor", -6, -6);
+    ctx.restore();
+
+    // Tuukka
+    drawTuukka(t);
+
+    ctx.restore();
+
+    // UI overlays
+    drawBanner();
+    if (win && endPanel) drawEndPanel(endPanel);
+  }
+
+  // --- Main loop ---
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+
+    // FPS display
+    const fps = 1 / Math.max(1e-6, dt);
+    fpsSmooth = lerp(fpsSmooth, fps, 0.06);
+    ui.fps.textContent = `${fpsSmooth.toFixed(0)} FPS`;
+
+    if (!win) {
+      updatePlayer(dt);
+      updateEnemies(dt);
+      updateArticles(dt, now/1000);
+      updateDroppedPages(dt);
+      updateCompanies();
+      updateGoal();
+      updateCamera(dt);
+    } else {
+      // Still allow restart on win
+      if (keys.has("r")) reset();
+      updateCamera(dt);
+    }
+
+    // Particles update life uses frames; okay for this scale
+    drawWorld(now/1000);
+    drawParticles(dt);
+
+    requestAnimationFrame(loop);
+  }
+
+  // Init
+  seedArticles();
+  ui.metTotal.textContent = companies.length;
+  updateHud();
+  reset();
   requestAnimationFrame(loop);
-}
-
-updateHud();
-resetLevel();
-loop();
+})();
 </script>
 </body>
 </html>
