@@ -1,1 +1,1 @@
-https://ideanikkaritotti.github.io/Idea-management-game/
+https://ideanikkaritotti.github.io/my-game/
